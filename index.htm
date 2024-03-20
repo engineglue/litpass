@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta http-equiv="X-UA-Compatible" content="ie=edge">
+		<title>LitPass Authentication Example</title>
+		<link rel="icon" href="./images/icon.png" type="image/x-icon">
+	</head>
+	<body bgcolor="#f9f9f9">
+		<main>
+		
+			<h1 style="font-size:18px;font-family:'Arial';color:#333;">LitPass Authentication Example</h1>
+			
+			<hr><br>
+
+			<div id="authBox">
+			
+				<input id="emailAddress" name="emailAddress" type="text" placeholder="email address" autofocus 
+					style="	width:240px;
+							padding:6px 8px 6px 8px;
+							font-size:16px;
+							background-color:#e8f1ff;
+							border:1px solid #333;
+					">
+				<br>
+				
+				<div style="border:1px solid #BBB;width:256px;margin-top:7px;background-color:#fff">
+					<input id="littlePassword" name="littlePassword" type="password" placeholder="little password by" 
+						style="	margin: -1px 0px 0px -1px;
+								width:240px;
+								padding:6px 8px 6px 8px;
+								font-size:16px;
+								background-color:#e8f1ff;
+								border:1px solid #333;
+						">
+					<br>
+					<div style="margin: 6px 0px 2px 0px;text-align:center;width:240px;height:25px;"><a href="https://litpass.cdnja.com" style="text-decoration:none;border:none;"><img width="100" src="./images/logo_link_noborder_grayt_300-fs8.png"></a></div>
+				</div>
+				
+				<div style="width:256px;margin-top:10px;text-align:right;">
+					<input id="registerButton" type="button" value="Register" 
+						style="	width:75px;
+								margin-right:5px;
+								padding:5px 70px 5px 8px;
+								font-size:16px;
+						">
+					<input id="loginButton" type="button" value="Login" 
+						style="	width:75px;
+								margin-right:-2px;
+								padding:5px 8px 5px 8px;
+								font-size:16px;
+						">
+					<br>
+					<div style="margin-top:10px;font-size:12px;"><a href="forgotPassword.php" style="color:#566987;">Forgot Password</a></div>
+				</div>
+			
+			</div>
+		
+		</main>
+
+		<script>
+		
+			//your domain or name of app
+			const domain = "litpass.cdnja.com";
+
+			//your salt (anything you want but you can never change it) [also, you could hash this if you want]
+			const serverSalt = "^-SaLt-^";
+			
+			//onload functions
+			document.addEventListener('DOMContentLoaded', function() {
+				
+				const email = document.getElementById("emailAddress");
+				const littlePassword = document.getElementById("littlePassword");
+				const loginButton = document.getElementById('loginButton');
+				const registerButton = document.getElementById('registerButton');
+				
+				littlePassword.addEventListener("keypress", function(event) {
+					if(event.key === "Enter") {
+						login(email.value, littlePassword.value);
+					}
+				});
+				
+				loginButton.addEventListener('click', function() {
+					login(email.value, littlePassword.value);
+				});
+				
+				registerButton.addEventListener('click', function() {
+					register(email.value, littlePassword.value);
+				});
+				
+			});
+			
+			async function login(email, little){
+
+				const loginScript = "login.php";
+
+				if(email.length < 1){
+					error("emailAddress", "required");
+					throw "email required.";
+				}
+				
+				if(little.length < 1){
+					error("littlePassword", "required");
+					throw "password required.";
+				}
+				
+				let litPassHash = "";
+				
+				let littleHash = little;
+				let domainHash = domain;
+				let serverSaltHash = serverSalt;
+
+				await sha256(little).then((digestHex) => (littleHash = digestHex));
+				await sha256(domain).then((digestHex) => (domainHash = digestHex));
+				await sha256(serverSalt).then((digestHex) => (serverSaltHash = digestHex));
+
+				fetchLitPass(littleHash, domainHash, serverSaltHash).then(litPassHash => {
+
+					postData(loginScript, {emailAddress:email, password:litPassHash}).then((data) => {
+					
+						//login success
+						if(data.result === "success"){
+						
+							let userID = data.userID;
+						
+							//redirect
+							window.location.href = "./secure.php";
+						
+						}
+						
+						//login failed
+						if(data.result === "failed"){
+
+							error("emailAddress", data.message);
+							throw data.message;
+
+						}
+						
+						console.log(data);
+
+					});
+					
+				});
+
+			}
+			
+			async function register(email, little){
+			
+				const registerScript = "register.php";
+
+				if(email.length < 1){
+					error("emailAddress", "required");
+					throw "email required.";
+				}
+				
+				if(little.length < 1){
+					error("littlePassword", "required");
+					throw "password required.";
+				}
+
+				let loginSalt = Math.round(Math.random() * (99999 - 10000) + 10000);
+				
+				let littleHash = little;
+				let domainHash = domain;
+				let serverSaltHash = serverSalt;
+				let loginSaltHash = loginSalt;
+
+				await sha256(little).then((digestHex) => (littleHash = digestHex));
+				await sha256(domain).then((digestHex) => (domainHash = digestHex));
+				await sha256(serverSalt).then((digestHex) => (serverSaltHash = digestHex));
+				await sha256(loginSalt).then((digestHex) => (loginSaltHash = digestHex));
+				
+				let litPassHash = little;
+				let saltedPassword = littleHash;
+
+				fetchLitPass(littleHash, domainHash, serverSaltHash).then(litPassHash => {
+				
+					sha256(litPassHash + loginSalt).then((saltedPassword) => {
+
+						postData(registerScript, {emailAddress:email, password:saltedPassword, salt:loginSaltHash}).then((data) => {
+
+							//registrar success
+							if(data.result === "success"){
+							
+								//redirect
+								window.location.href = data.message;
+							
+							}
+							
+							//registrar failed
+							if(data.result === "failed"){
+
+								error("emailAddress", data.message);
+								throw data.message;
+
+							}
+
+							console.log(data);
+
+						});
+					
+					});
+					
+				});
+			
+			}
+
+			async function sha256(message){
+				
+				//only return the hash if connection is secured (this is really only for modified hosts file on localhost)
+				if (location.protocol === 'https:') {
+					
+					const msgUint8 = new TextEncoder().encode(message);
+					const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+					const hashArray = Array.from(new Uint8Array(hashBuffer));
+					const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+					
+					return hashHex;
+					
+				} else {
+					
+					return message;
+					
+				}
+				
+			}
+			
+			async function fetchLitPass(little, domain, salt){
+
+				const passLen = 15;
+				const specLen = 6;
+				
+				const litpassURL = "https://litpass.cdnja.com/?domain=" + domain + "&password=" + little + "&length=" + passLen + "&salt=" + salt + "&specials=" + specLen;
+				
+				let response = await fetch(litpassURL);
+
+				let data = await response.json();
+				
+				let accessCount = data.count;
+
+				if(accessCount > 99){
+					error("littlePassword", "LitPass count exceeded");
+					throw "LitPass daily use count exceeds 99.";
+				}
+				
+				let litPass = data.password;
+				let litPassHash = litPass;
+				
+				await sha256(litPass).then((digestHex) => (litPassHash = digestHex));
+
+				return litPassHash;
+
+			}
+			
+			function error(elem, message){
+				
+				const target = document.getElementById(elem);
+				const fieldType = document.getElementById(elem).type;
+				
+				let fieldData = target.value;
+
+				target.disabled = true;
+				target.type = "text";
+				target.value = message;
+				target.style.color = "red";
+				
+				setTimeout(() => {
+					target.disabled = false;
+					target.type = fieldType;
+					target.value = fieldData;
+					target.style.color = "black";
+					target.focus();
+				}, "1000");
+				
+			}
+			
+			async function postData(url = "", data = {}) {
+console.log(data);
+				const response = await fetch(url, {
+					method: "POST",
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify(data)
+				});
+
+				return response.json();
+				
+			}
+			
+		</script>
+		
+	</body>
+</html>
